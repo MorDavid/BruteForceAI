@@ -51,7 +51,7 @@ class OutputCapture:
         if self.file:
             self.file.flush()
 
-def main():
+def main()
     parser = argparse.ArgumentParser(
         description='BruteForceAI - AI-Powered Login Form Analysis and Brute Force Attack Tool using LLM',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -61,7 +61,8 @@ Examples:
   python BruteForceAI.py analyze --urls urls.txt
 
   # Analyze - Analyze login forms (with default models)
-  python BruteForceAI.py analyze --urls urls.txt --llm-provider ollama
+  python BruteForceAI.py analyze www.equitybankgroup.co.ke
+  urls.txt --llm-provider ollama
   python BruteForceAI.py analyze --urls urls.txt --llm-provider groq --llm-api-key "your_api_key"
 
   # Analyze - Analyze login forms (with specific models)
