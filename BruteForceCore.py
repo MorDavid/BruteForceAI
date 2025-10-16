@@ -946,25 +946,25 @@ Return ONLY valid JSON format:
                     input_type = element.get_attribute('type')
                     
                     # Check if it's a valid submit element
-                    is_valid_submit = (
-                        (tag_name == 'button') or 
-                        (tag_name == 'input' and input_type in ['submit', 'button'])
-                    )
+                    #is_valid_submit = (
+                    #    (tag_name == 'button') or 
+                    #    (tag_name == 'input' and input_type in ['submit', 'button'])
+                    #)
                     
-                    if is_valid_submit:
-                        # Test if the button is clickable
-                        try:
-                            if element.is_enabled() and element.is_visible():
-                                # Test hover to see if it's interactive
-                                element.hover()
-                                validation_details['submit'] = f"✅ {tag_name} element - clickable and interactive"
-                                validated_selectors['login_submit_button_selector'] = submit_selector
-                            else:
-                                validation_details['submit'] = f"❌ {tag_name} element not enabled or visible"
-                        except Exception as e:
-                            validation_details['submit'] = f"❌ Button not interactive: {str(e)[:50]}"
-                    else:
-                        validation_details['submit'] = f"❌ Not a submit element: {tag_name}"
+                #if is_valid_submit:
+                    # Test if the button is clickable
+                    try:
+                        if element.is_enabled() and element.is_visible():
+                            # Test hover to see if it's interactive
+                            element.hover()
+                            validation_details['submit'] = f"✅ {tag_name} element - clickable and interactive"
+                            validated_selectors['login_submit_button_selector'] = submit_selector
+                        else:
+                            validation_details['submit'] = f"❌ {tag_name} element not enabled or visible"
+                    except Exception as e:
+                        validation_details['submit'] = f"❌ Button not interactive: {str(e)[:50]}"
+                #else:
+                    #validation_details['submit'] = f"❌ Not a submit element: {tag_name}"
                 else:
                     validation_details['submit'] = f"❌ Element not found with selector: {submit_selector}"
             except Exception as e:
