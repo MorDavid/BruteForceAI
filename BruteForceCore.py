@@ -480,7 +480,9 @@ class BruteForceAI:
                 browser = p.chromium.launch(**browser_args)
                 
                 # Configure context with proxy and User-Agent
-                context_args = {}
+                context_args = {
+                    'ignore_https_errors': True  # Ignore SSL certificate errors
+                }
                 if self.proxy:
                     context_args['proxy'] = {"server": self.proxy}
                 
@@ -1922,7 +1924,9 @@ Return ONLY valid JSON format:
                     browser = p.chromium.launch(**browser_args)
                     
                     # Configure context with proxy and User-Agent
-                    context_args = {}
+                    context_args = {
+                        'ignore_https_errors': True  # Ignore SSL certificate errors
+                    }
                     if self.proxy:
                         context_args['proxy'] = {"server": self.proxy}
                     
