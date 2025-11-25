@@ -241,6 +241,8 @@ class BruteForceAI:
                 login_username_selector TEXT,
                 login_password_selector TEXT,
                 login_submit_button_selector TEXT,
+                detected_vendor TEXT,
+                detected_product TEXT,
                 dom_length TEXT,
                 failed_dom_length TEXT,
                 dom_change INTEGER,
@@ -347,6 +349,8 @@ class BruteForceAI:
             return self._ollama_request(prompt, system_prompt)
         elif self.llm_provider.lower() == 'groq':
             return self._groq_request(prompt, system_prompt)
+        elif self.llm_provider.lower() == 'openrouter':
+            return self._openrouter_request(prompt, system_prompt)
         else:
             print(f"Unsupported LLM provider: {self.llm_provider}")
             return None
@@ -445,6 +449,66 @@ class BruteForceAI:
             return None
         except Exception as e:
             print(f"❌ Groq request error: {e}")
+            return None
+
+    def _openrouter_request(self, prompt, system_prompt=None):
+        """
+        Send request to OpenRouter API
+        """
+        try:
+            if not self.llm_api_key:
+                print("OpenRouter API key not provided")
+                return None
+
+            url = "https://openrouter.ai/api/v1/chat/completions"
+
+            headers = {
+                "Authorization": f"Bearer {self.llm_api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://github.com/MorDavid/BruteForceAI",
+                "X-Title": "BruteForceAI"
+            }
+
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
+
+            data = {
+                "model": self.llm_model,
+                "messages": messages,
+                "temperature": 0.7,
+                "max_tokens": 4096
+            }
+
+            response = requests.post(url, headers=headers, json=data, timeout=120)
+            response.raise_for_status()
+
+            result = response.json()
+            return result['choices'][0]['message']['content']
+
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 400:
+                print(f"❌ OpenRouter API Error: Bad Request (400)")
+                print(f"   Model: {self.llm_model}")
+                try:
+                    error_detail = e.response.json()
+                    print(f"   Details: {error_detail}")
+                except:
+                    pass
+            elif e.response.status_code == 401:
+                print(f"❌ OpenRouter API Error: Unauthorized (401)")
+                print(f"   Your API key is invalid or expired")
+                print(f"   Get a new one from: https://openrouter.ai/keys")
+            elif e.response.status_code == 429:
+                print(f"❌ OpenRouter API Error: Rate Limited (429)")
+                print(f"   You've exceeded the rate limit or insufficient credits")
+            else:
+                print(f"❌ OpenRouter API Error: HTTP {e.response.status_code}")
+                print(f"   {e}")
+            return None
+        except Exception as e:
+            print(f"❌ OpenRouter request error: {e}")
             return None
 
     def stage1(self, url):
@@ -554,11 +618,16 @@ class BruteForceAI:
                                 test_username_used = None
                             
                             # Success - save to database
+                            # Get vendor/product from original LLM response (selectors), not validated_selectors
+                            detected_vendor = selectors.get('detected_vendor', 'unknown')
+                            detected_product = selectors.get('detected_product', 'unknown')
                             result = {
                                 'url': url,
                                 'login_username_selector': validated_selectors.get('login_username_selector'),
                                 'login_password_selector': validated_selectors.get('login_password_selector'),
                                 'login_submit_button_selector': validated_selectors.get('login_submit_button_selector'),
+                                'detected_vendor': detected_vendor,
+                                'detected_product': detected_product,
                                 'dom_length': str(clean_dom_length),
                                 'failed_dom_length': str(failed_dom_length) if failed_dom_length else None,
                                 'dom_change': dom_change,
@@ -567,12 +636,14 @@ class BruteForceAI:
                                 'attempts': attempt,
                                 'playwright_or_requests': 'playwright'
                             }
-                            
+
                             self._save_form_analysis(result)
                             print(f"✅ Stage 1 completed for {url} (attempt {attempt})")
                             print(f"   Username selector: {validated_selectors.get('login_username_selector')}")
                             print(f"   Password selector: {validated_selectors.get('login_password_selector')}")
                             print(f"   Submit selector: {validated_selectors.get('login_submit_button_selector')}")
+                            if detected_vendor != 'unknown' or detected_product != 'unknown':
+                                print(f"   Detected: {detected_vendor} / {detected_product}")
                             print(f"   Clean DOM length: {clean_dom_length}")
                             print(f"   Failed DOM length: {failed_dom_length}")
                             if dom_change is not None:
@@ -616,11 +687,16 @@ class BruteForceAI:
                                         test_username_used = None
                                     
                                     # Success - save to database
+                                    # Get vendor/product from the last selectors response
+                                    acc_vendor = selectors.get('detected_vendor', 'unknown') if selectors else 'unknown'
+                                    acc_product = selectors.get('detected_product', 'unknown') if selectors else 'unknown'
                                     result = {
                                         'url': url,
                                         'login_username_selector': complete_validated.get('login_username_selector'),
                                         'login_password_selector': complete_validated.get('login_password_selector'),
                                         'login_submit_button_selector': complete_validated.get('login_submit_button_selector'),
+                                        'detected_vendor': acc_vendor,
+                                        'detected_product': acc_product,
                                         'dom_length': str(clean_dom_length),
                                         'failed_dom_length': str(failed_dom_length) if failed_dom_length else None,
                                         'dom_change': dom_change,
@@ -629,12 +705,14 @@ class BruteForceAI:
                                         'attempts': attempt,
                                         'playwright_or_requests': 'playwright'
                                     }
-                                    
+
                                     self._save_form_analysis(result)
                                     print(f"✅ Stage 1 completed for {url} (accumulated across {attempt} attempts)")
                                     print(f"   Username selector: {complete_validated.get('login_username_selector')}")
                                     print(f"   Password selector: {complete_validated.get('login_password_selector')}")
                                     print(f"   Submit selector: {complete_validated.get('login_submit_button_selector')}")
+                                    if acc_vendor != 'unknown' or acc_product != 'unknown':
+                                        print(f"   Detected: {acc_vendor} / {acc_product}")
                                     print(f"   Clean DOM length: {clean_dom_length}")
                                     print(f"   Failed DOM length: {failed_dom_length}")
                                     if dom_change is not None:
@@ -741,11 +819,15 @@ class BruteForceAI:
         # Smart HTML processing - extract form elements and context
         processed_html = self._extract_form_content(html_content)
         
-        prompt = f"""Analyze this HTML and identify CSS selectors for login form elements:
+        prompt = f"""Analyze this HTML and identify CSS selectors for login form elements, and detect the vendor/product:
 
 1. login_username_selector - CSS selector for username/email input field
 2. login_password_selector - CSS selector for password input field
 3. login_submit_button_selector - CSS selector for login submit button
+4. detected_vendor - The vendor/manufacturer name (e.g., "Cisco", "Netgear", "Apache", "Microsoft", "Dell", "HP", "Ubiquiti")
+5. detected_product - The specific product name if identifiable (e.g., "Tomcat", "IIS", "pfSense", "RouterOS")
+
+Look for vendor/product hints in: page title, headers, logos, footer text, form labels, meta tags, CSS class names, URL patterns.
 
 HTML:
 {processed_html}
@@ -753,11 +835,15 @@ HTML:
 Return ONLY valid JSON format:
 {{
   "login_username_selector": "...",
-  "login_password_selector": "...", 
-  "login_submit_button_selector": "..."
-}}"""
+  "login_password_selector": "...",
+  "login_submit_button_selector": "...",
+  "detected_vendor": "...",
+  "detected_product": "..."
+}}
 
-        system_prompt = "You are a web scraping expert. Analyze HTML and return precise CSS selectors for login forms. Return only valid JSON."
+If vendor/product cannot be determined, use "unknown" for those fields."""
+
+        system_prompt = "You are a web scraping and device fingerprinting expert. Analyze HTML to find CSS selectors for login forms AND identify the vendor/product from page content. Return only valid JSON."
         
         response = self.llm_prompt(prompt, system_prompt)
         
@@ -816,22 +902,27 @@ Please analyze this HTML and identify CSS selectors for login form elements:
 1. login_username_selector - CSS selector for username/email input field
 2. login_password_selector - CSS selector for password input field
 3. login_submit_button_selector - CSS selector for login submit button
+4. detected_vendor - The vendor/manufacturer name (e.g., "Cisco", "Netgear", "Apache", "Microsoft")
+5. detected_product - The specific product name if identifiable (e.g., "Tomcat", "IIS", "pfSense")
 
 HTML:
 {processed_html}
 
-CRITICAL INSTRUCTIONS: 
+CRITICAL INSTRUCTIONS:
 - If a selector is marked as "WORKING" above, use it EXACTLY as provided
 - Provide DIFFERENT selectors ONLY for the failed/missing ones
 - Look for alternative ways to target the same elements (class names, IDs, attributes)
 - Make sure the selectors are precise and unique
 - Do NOT change working selectors
+- Keep the same detected_vendor and detected_product from previous attempt if provided
 
 Return ONLY valid JSON format:
 {{
   "login_username_selector": "...",
-  "login_password_selector": "...", 
-  "login_submit_button_selector": "..."
+  "login_password_selector": "...",
+  "login_submit_button_selector": "...",
+  "detected_vendor": "...",
+  "detected_product": "..."
 }}"""
 
         system_prompt = f"You are a web scraping expert on retry attempt #{attempt}. NEVER change selectors that are marked as WORKING. Only provide different selectors for failed ones. Return only valid JSON."
@@ -1050,19 +1141,21 @@ Return ONLY valid JSON format:
         try:
             conn = sqlite3.connect(self.database)
             cursor = conn.cursor()
-            
+
             cursor.execute('''
-                INSERT OR REPLACE INTO form_analysis 
-                (url, login_username_selector, login_password_selector, 
-                 login_submit_button_selector, dom_length, failed_dom_length, 
-                 dom_change, test_username_used, success, 
-                 attempts, playwright_or_requests)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO form_analysis
+                (url, login_username_selector, login_password_selector,
+                 login_submit_button_selector, detected_vendor, detected_product,
+                 dom_length, failed_dom_length, dom_change, test_username_used,
+                 success, attempts, playwright_or_requests)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 result['url'],
                 result['login_username_selector'],
                 result['login_password_selector'],
                 result['login_submit_button_selector'],
+                result.get('detected_vendor', 'unknown'),
+                result.get('detected_product', 'unknown'),
                 result['dom_length'],
                 result['failed_dom_length'],
                 result['dom_change'],
@@ -1071,10 +1164,10 @@ Return ONLY valid JSON format:
                 result['attempts'],
                 result['playwright_or_requests']
             ))
-            
+
             conn.commit()
             conn.close()
-            
+
         except Exception as e:
             print(f"Error saving form analysis: {e}")
 
@@ -2492,11 +2585,123 @@ def _validate_llm_setup(llm_provider, llm_model, llm_api_key=None, ollama_url=No
             print("")
         
         print(f"✅ Groq setup configured - model '{llm_model}' will be validated on first use")
-        
+
         # Add model performance tips
         if llm_model == 'llama-3.1-8b-instant':
             print(f"💡 Tip: For better analysis quality, try: --llm-model llama-3.3-70b-versatile")
         elif llm_model not in ['llama-3.3-70b-versatile', 'llama3-70b-8192', 'gemma2-9b-it']:
             print(f"💡 Recommended models: llama-3.3-70b-versatile (best), llama3-70b-8192 (fast), gemma2-9b-it (lightweight)")
-    
+
+    elif llm_provider.lower() == 'openrouter':
+        print("🔍 Checking OpenRouter setup...")
+
+        # Check if API key is provided
+        if not llm_api_key:
+            print("❌ OpenRouter Error: API key is required for OpenRouter")
+            print("")
+            print("🔧 To fix this:")
+            print("1. Get API key from: https://openrouter.ai/keys")
+            print("2. Use: --llm-api-key YOUR_OPENROUTER_API_KEY")
+            print("3. Or set OPENROUTER_API_KEY in .env file")
+            print("4. Or use Ollama instead: --llm-provider ollama")
+            print("")
+            exit(1)
+
+        # Basic API key format validation
+        if not llm_api_key.startswith('sk-or-'):
+            print("⚠️  Warning: OpenRouter API keys usually start with 'sk-or-'")
+            print("   Make sure you're using the correct API key format")
+            print("")
+
+        print(f"✅ OpenRouter setup configured - model '{llm_model}' will be validated on first use")
+
     return True
+
+
+def load_default_creds(csv_path=None, vendor_filter=None):
+    """
+    Load default credentials from CSV file with optional vendor filtering.
+
+    Args:
+        csv_path: Path to CSV file (default: DefaultCreds-Cheat-Sheet.csv in same directory)
+        vendor_filter: Vendor name to filter by (fuzzy match)
+
+    Returns:
+        list: List of (username, password) tuples
+    """
+    import csv
+
+    if csv_path is None:
+        csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'DefaultCreds-Cheat-Sheet.csv')
+
+    if not os.path.exists(csv_path):
+        print(f"❌ Default credentials file not found: {csv_path}")
+        return []
+
+    credentials = []
+    vendor_filter_lower = vendor_filter.lower() if vendor_filter else None
+
+    try:
+        with open(csv_path, 'r', encoding='utf-8', errors='ignore') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                vendor = row.get('productvendor', '')
+                username = row.get('username', '')
+                password = row.get('password', '')
+
+                # Handle <blank> as empty string
+                if username == '<blank>':
+                    username = ''
+                if password == '<blank>':
+                    password = ''
+
+                # Apply vendor filter if specified
+                if vendor_filter_lower:
+                    if vendor_filter_lower not in vendor.lower():
+                        continue
+
+                credentials.append((username, password))
+
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_creds = []
+        for cred in credentials:
+            if cred not in seen:
+                seen.add(cred)
+                unique_creds.append(cred)
+
+        return unique_creds
+
+    except Exception as e:
+        print(f"❌ Error loading default credentials: {e}")
+        return []
+
+
+def get_detected_vendor(database, url):
+    """
+    Get detected vendor/product for a URL from the database.
+
+    Args:
+        database: Path to SQLite database
+        url: URL to look up
+
+    Returns:
+        tuple: (vendor, product) or (None, None) if not found
+    """
+    try:
+        conn = sqlite3.connect(database)
+        cursor = conn.cursor()
+        cursor.execute(
+            'SELECT detected_vendor, detected_product FROM form_analysis WHERE url = ?',
+            (url,)
+        )
+        result = cursor.fetchone()
+        conn.close()
+
+        if result:
+            return result[0], result[1]
+        return None, None
+
+    except Exception as e:
+        print(f"❌ Error getting detected vendor: {e}")
+        return None, None
