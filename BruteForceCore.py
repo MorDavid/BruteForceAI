@@ -347,6 +347,8 @@ class BruteForceAI:
             return self._ollama_request(prompt, system_prompt)
         elif self.llm_provider.lower() == 'groq':
             return self._groq_request(prompt, system_prompt)
+        elif self.llm_provider.lower() == 'openrouter':
+            return self._openrouter_request(prompt, system_prompt)
         else:
             print(f"Unsupported LLM provider: {self.llm_provider}")
             return None
@@ -445,6 +447,66 @@ class BruteForceAI:
             return None
         except Exception as e:
             print(f"❌ Groq request error: {e}")
+            return None
+
+    def _openrouter_request(self, prompt, system_prompt=None):
+        """
+        Send request to OpenRouter API
+        """
+        try:
+            if not self.llm_api_key:
+                print("OpenRouter API key not provided")
+                return None
+
+            url = "https://openrouter.ai/api/v1/chat/completions"
+
+            headers = {
+                "Authorization": f"Bearer {self.llm_api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://github.com/MorDavid/BruteForceAI",
+                "X-Title": "BruteForceAI"
+            }
+
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
+
+            data = {
+                "model": self.llm_model,
+                "messages": messages,
+                "temperature": 0.7,
+                "max_tokens": 4096
+            }
+
+            response = requests.post(url, headers=headers, json=data, timeout=120)
+            response.raise_for_status()
+
+            result = response.json()
+            return result['choices'][0]['message']['content']
+
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 400:
+                print(f"❌ OpenRouter API Error: Bad Request (400)")
+                print(f"   Model: {self.llm_model}")
+                try:
+                    error_detail = e.response.json()
+                    print(f"   Details: {error_detail}")
+                except:
+                    pass
+            elif e.response.status_code == 401:
+                print(f"❌ OpenRouter API Error: Unauthorized (401)")
+                print(f"   Your API key is invalid or expired")
+                print(f"   Get a new one from: https://openrouter.ai/keys")
+            elif e.response.status_code == 429:
+                print(f"❌ OpenRouter API Error: Rate Limited (429)")
+                print(f"   You've exceeded the rate limit or insufficient credits")
+            else:
+                print(f"❌ OpenRouter API Error: HTTP {e.response.status_code}")
+                print(f"   {e}")
+            return None
+        except Exception as e:
+            print(f"❌ OpenRouter request error: {e}")
             return None
 
     def stage1(self, url):
@@ -2492,11 +2554,34 @@ def _validate_llm_setup(llm_provider, llm_model, llm_api_key=None, ollama_url=No
             print("")
         
         print(f"✅ Groq setup configured - model '{llm_model}' will be validated on first use")
-        
+
         # Add model performance tips
         if llm_model == 'llama-3.1-8b-instant':
             print(f"💡 Tip: For better analysis quality, try: --llm-model llama-3.3-70b-versatile")
         elif llm_model not in ['llama-3.3-70b-versatile', 'llama3-70b-8192', 'gemma2-9b-it']:
             print(f"💡 Recommended models: llama-3.3-70b-versatile (best), llama3-70b-8192 (fast), gemma2-9b-it (lightweight)")
-    
+
+    elif llm_provider.lower() == 'openrouter':
+        print("🔍 Checking OpenRouter setup...")
+
+        # Check if API key is provided
+        if not llm_api_key:
+            print("❌ OpenRouter Error: API key is required for OpenRouter")
+            print("")
+            print("🔧 To fix this:")
+            print("1. Get API key from: https://openrouter.ai/keys")
+            print("2. Use: --llm-api-key YOUR_OPENROUTER_API_KEY")
+            print("3. Or set OPENROUTER_API_KEY in .env file")
+            print("4. Or use Ollama instead: --llm-provider ollama")
+            print("")
+            exit(1)
+
+        # Basic API key format validation
+        if not llm_api_key.startswith('sk-or-'):
+            print("⚠️  Warning: OpenRouter API keys usually start with 'sk-or-'")
+            print("   Make sure you're using the correct API key format")
+            print("")
+
+        print(f"✅ OpenRouter setup configured - model '{llm_model}' will be validated on first use")
+
     return True

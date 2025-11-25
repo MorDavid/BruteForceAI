@@ -114,6 +114,11 @@ ollama pull llama3.2:3b
 1. Get API key from [Groq Console](https://console.groq.com/)
 2. Use with `--llm-provider groq --llm-api-key YOUR_KEY`
 
+#### Option 3: OpenRouter (Cloud - Multiple Models)
+1. Get API key from [OpenRouter](https://openrouter.ai/keys)
+2. Use with `--llm-provider openrouter --llm-api-key YOUR_KEY`
+3. Or create a `.env` file with `openrouterkey = YOUR_KEY` for automatic loading
+
 ### 🧠 Model Selection & Performance
 
 #### Recommended Models by Provider
@@ -129,19 +134,31 @@ ollama pull llama3.2:3b
 - `gemma2-9b-it` - Lightweight option, good for simple forms (1 attempt)
 - `llama-3.1-8b-instant` - ⚠️ Not recommended (rate limiting issues, 3+ attempts)
 
+**OpenRouter (Cloud):**
+- `anthropic/claude-sonnet-4` - **Default** - Excellent for complex form analysis
+- `anthropic/claude-opus-4` - Most capable, best for difficult pages
+- `openai/gpt-4o` - Strong alternative with good accuracy
+- Any model from [OpenRouter Models](https://openrouter.ai/models)
+
 #### Performance Tips
 ```bash
 # Best quality (recommended for complex forms)
-python main.py analyze --urls targets.txt --llm-provider groq --llm-model llama-3.3-70b-versatile --llm-api-key YOUR_KEY
+python BruteForceAI.py analyze --urls targets.txt --llm-provider groq --llm-model llama-3.3-70b-versatile --llm-api-key YOUR_KEY
 
 # Fast and reliable
-python main.py analyze --urls targets.txt --llm-provider groq --llm-model llama3-70b-8192 --llm-api-key YOUR_KEY
+python BruteForceAI.py analyze --urls targets.txt --llm-provider groq --llm-model llama3-70b-8192 --llm-api-key YOUR_KEY
 
 # Lightweight for simple forms
-python main.py analyze --urls targets.txt --llm-provider groq --llm-model gemma2-9b-it --llm-api-key YOUR_KEY
+python BruteForceAI.py analyze --urls targets.txt --llm-provider groq --llm-model gemma2-9b-it --llm-api-key YOUR_KEY
 
 # Local processing (no API key needed)
-python main.py analyze --urls targets.txt --llm-provider ollama --llm-model llama3.2:3b
+python BruteForceAI.py analyze --urls targets.txt --llm-provider ollama --llm-model llama3.2:3b
+
+# OpenRouter with Claude (API key from .env or CLI)
+python BruteForceAI.py analyze --urls targets.txt --llm-provider openrouter
+
+# OpenRouter with specific model
+python BruteForceAI.py analyze --urls targets.txt --llm-provider openrouter --llm-model anthropic/claude-opus-4 --llm-api-key YOUR_KEY
 ```
 
 ---
@@ -256,9 +273,9 @@ python main.py --skip-version-check analyze --urls targets.txt
 ### Analysis Options
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `--llm-provider` | LLM provider (ollama/groq) | ollama |
-| `--llm-model` | Model name | llama3.2:3b (ollama), llama-3.3-70b-versatile (groq) |
-| `--llm-api-key` | API key for Groq | None |
+| `--llm-provider` | LLM provider (ollama/groq/openrouter) | ollama |
+| `--llm-model` | Model name | llama3.2:3b (ollama), llama-3.3-70b-versatile (groq), anthropic/claude-sonnet-4 (openrouter) |
+| `--llm-api-key` | API key for Groq/OpenRouter (or use .env file) | None |
 | `--selector-retry` | Retry attempts for selectors | 10 |
 | `--force-reanalyze` | Force re-analysis | False |
 

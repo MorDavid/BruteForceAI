@@ -111,9 +111,9 @@ Examples:
     # Analyze subcommand (formerly stage1)
     analyze_parser = subparsers.add_parser('analyze', help='Analyze login forms and identify selectors')
     analyze_parser.add_argument('--urls', required=True, help='File containing URLs (one per line)')
-    analyze_parser.add_argument('--llm-provider', choices=['ollama', 'groq'], help='LLM provider for analysis (default: ollama)')
-    analyze_parser.add_argument('--llm-model', help='LLM model name (default: llama3.2:3b for Ollama, llama-3.3-70b-versatile for Groq)')
-    analyze_parser.add_argument('--llm-api-key', help='API key for Groq (not needed for Ollama)')
+    analyze_parser.add_argument('--llm-provider', choices=['ollama', 'groq', 'openrouter'], help='LLM provider for analysis (default: ollama)')
+    analyze_parser.add_argument('--llm-model', help='LLM model name (default: llama3.2:3b for Ollama, llama-3.3-70b-versatile for Groq, anthropic/claude-opus-4.5 for OpenRouter)')
+    analyze_parser.add_argument('--llm-api-key', help='API key for Groq/OpenRouter (not needed for Ollama)')
     analyze_parser.add_argument('--ollama-url', help='Ollama server URL (default: http://localhost:11434)')
     analyze_parser.add_argument('--selector-retry', type=int, default=10, help='Number of retry attempts for selectors')
     analyze_parser.add_argument('--show-browser', action='store_true', help='Show browser window during analysis')
@@ -243,24 +243,52 @@ Examples:
             print(f"🕐 Session completed: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             output_capture.stop()
 
+def load_env_file():
+    """Load environment variables from .env file"""
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+    env_vars = {}
+    if os.path.exists(env_path):
+        with open(env_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    env_vars[key.strip()] = value.strip().strip('"').strip("'")
+    return env_vars
+
 def execute_analyze(args):
     """Execute Analyze - Login form analysis"""
     print("🚀 BruteForceAI Analyze - Login Form Analysis")
     print("=" * 50)
     print(f"URLs file: {args.urls}")
     print(f"LLM provider: {args.llm_provider or 'None'}")
-    
+
+    # Load .env file for API keys
+    env_vars = load_env_file()
+
     # Set default provider and models if not specified
     llm_provider = args.llm_provider
     llm_model = args.llm_model
-    
+    llm_api_key = args.llm_api_key
+
     # If no provider specified, default to ollama
     if not llm_provider:
         llm_provider = 'ollama'
         print(f"LLM provider: {llm_provider} (default)")
     else:
         print(f"LLM provider: {llm_provider}")
-    
+
+    # Load API key from .env if not provided via CLI
+    if not llm_api_key:
+        if llm_provider == 'openrouter':
+            llm_api_key = env_vars.get('openrouterkey') or env_vars.get('OPENROUTER_API_KEY')
+            if llm_api_key:
+                print("API key: Loaded from .env file")
+        elif llm_provider == 'groq':
+            llm_api_key = env_vars.get('GROQ_API_KEY')
+            if llm_api_key:
+                print("API key: Loaded from .env file")
+
     # Set default model based on provider if not specified
     if not llm_model:
         if llm_provider == 'ollama':
@@ -269,6 +297,9 @@ def execute_analyze(args):
         elif llm_provider == 'groq':
             llm_model = 'llama-3.3-70b-versatile'
             print(f"LLM model: {llm_model} (default for Groq)")
+        elif llm_provider == 'openrouter':
+            llm_model = 'anthropic/claude-sonnet-4'
+            print(f"LLM model: {llm_model} (default for OpenRouter)")
     else:
         print(f"LLM model: {llm_model}")
     
@@ -284,8 +315,8 @@ def execute_analyze(args):
     
     # Validate LLM setup before initializing BruteForceAI
     from BruteForceCore import _validate_llm_setup
-    _validate_llm_setup(llm_provider, llm_model, args.llm_api_key, args.ollama_url)
-    
+    _validate_llm_setup(llm_provider, llm_model, llm_api_key, args.ollama_url)
+
     # Initialize BruteForceAI
     bf = BruteForceAI(
         urls_file=args.urls,
@@ -298,7 +329,7 @@ def execute_analyze(args):
         database=args.database,
         llm_provider=llm_provider,  # Use the determined provider
         llm_model=llm_model,  # Use the determined model
-        llm_api_key=args.llm_api_key,
+        llm_api_key=llm_api_key,  # Use the determined API key (from args or .env)
         ollama_url=args.ollama_url,
         force_reanalyze=args.force_reanalyze,
         debug=args.debug,
