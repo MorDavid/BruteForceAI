@@ -60,16 +60,13 @@ Examples:
   # Analyze - Analyze login forms (simplest - uses default ollama + llama3.2:3b)
   python BruteForceAI.py analyze --urls urls.txt
 
-  # Analyze - Analyze login forms (with default models)
+  # Analyze - With different LLM providers
   python BruteForceAI.py analyze --urls urls.txt --llm-provider ollama
   python BruteForceAI.py analyze --urls urls.txt --llm-provider groq --llm-api-key "your_api_key"
+  python BruteForceAI.py analyze --urls urls.txt --llm-provider openrouter  # API key from .env
 
-  # Analyze - Analyze login forms (with specific models)
-  python BruteForceAI.py analyze --urls urls.txt --llm-provider ollama --llm-model llama3.2:3b
-  python BruteForceAI.py analyze --urls urls.txt --llm-provider groq --llm-model llama-3.1-70b-versatile --llm-api-key "your_api_key"
-  
-  # Analyze - Custom Ollama server
-  python BruteForceAI.py analyze --urls urls.txt --llm-provider ollama --ollama-url http://192.168.1.100:11434
+  # Analyze - OpenRouter with specific model
+  python BruteForceAI.py analyze --urls urls.txt --llm-provider openrouter --llm-model anthropic/claude-opus-4
 
   # Attack - Brute force attack
   python BruteForceAI.py attack --urls urls.txt --usernames usernames.txt --passwords passwords.txt
@@ -77,26 +74,11 @@ Examples:
   # Attack - Password spray with threads
   python BruteForceAI.py attack --urls urls.txt --usernames usernames.txt --passwords passwords.txt --mode passwordspray --threads 3
 
-  # Attack with Discord webhook notifications
-  python BruteForceAI.py attack --urls urls.txt --usernames usernames.txt --passwords passwords.txt --discord-webhook "https://discord.com/api/webhooks/..."
-
-  # Attack with Telegram notifications
-  python BruteForceAI.py attack --urls urls.txt --usernames usernames.txt --passwords passwords.txt --telegram-webhook "BOT_TOKEN" --telegram-chat-id "CHAT_ID"
-
-  # Attack with multiple webhooks
-  python BruteForceAI.py attack --urls urls.txt --usernames usernames.txt --passwords passwords.txt --discord-webhook "..." --slack-webhook "..."
-
-  # Save output to file
-  python BruteForceAI.py attack --urls urls.txt --usernames usernames.txt --passwords passwords.txt --output results.txt
-
   # Clean database
   python BruteForceAI.py clean-db
 
   # Check for updates
   python BruteForceAI.py check-updates
-
-  # Skip version check for faster startup
-  python BruteForceAI.py attack --urls urls.txt --usernames usernames.txt --passwords passwords.txt --skip-version-check
         """
     )
     
@@ -115,7 +97,7 @@ Examples:
     analyze_parser.add_argument('--llm-model', help='LLM model name (default: llama3.2:3b for Ollama, llama-3.3-70b-versatile for Groq, anthropic/claude-opus-4.5 for OpenRouter)')
     analyze_parser.add_argument('--llm-api-key', help='API key for Groq/OpenRouter (not needed for Ollama)')
     analyze_parser.add_argument('--ollama-url', help='Ollama server URL (default: http://localhost:11434)')
-    analyze_parser.add_argument('--selector-retry', type=int, default=10, help='Number of retry attempts for selectors')
+    analyze_parser.add_argument('--selector-retry', '--retries', type=int, default=10, help='Number of retry attempts for selectors (default: 10)')
     analyze_parser.add_argument('--show-browser', action='store_true', help='Show browser window during analysis')
     analyze_parser.add_argument('--browser-wait', type=int, default=0, help='Wait time in seconds when browser is visible')
     analyze_parser.add_argument('--proxy', help='Proxy server (e.g., http://127.0.0.1:8080)')
@@ -137,7 +119,7 @@ Examples:
     attack_parser.add_argument('--attack', choices=['playwright'], default='playwright',
                               help='Attack method (only playwright supported)')
     attack_parser.add_argument('--threads', type=int, default=1,
-                              help='Number of threads to use for parallel attacks')
+                              help='Number of threads to use for parallel attacks (default: 1)')
     attack_parser.add_argument('--retry-attempts', type=int, default=3,
                               help='Number of retry attempts for network errors (default: 3)')
     attack_parser.add_argument('--dom-threshold', type=int, default=100,
