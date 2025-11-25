@@ -201,9 +201,23 @@ python main.py analyze --urls targets.txt --llm-provider ollama --llm-model llam
 python main.py attack --urls targets.txt --usernames users.txt --passwords passwords.txt --threads 20 --delay 5 --jitter 2
 ```
 
-### 2. Advanced Attack Configuration
+### 2. Default Credentials Attack (NEW)
 ```bash
-python main.py attack \
+# Step 1: Analyze to detect vendor/product
+python BruteForceAI.py analyze --urls targets.txt --llm-provider openrouter
+
+# Step 2: Attack with auto-filtered default credentials
+python BruteForceAI.py attack --urls targets.txt --default-creds
+
+# Or combine with custom wordlist
+python BruteForceAI.py attack --urls targets.txt --default-creds --usernames users.txt --passwords passwords.txt
+```
+
+The LLM identifies the vendor (e.g., "Cisco", "Netgear", "Apache") during analysis, then `--default-creds` filters the 3,600+ default credentials to only those matching the detected vendor.
+
+### 3. Advanced Attack Configuration
+```bash
+python BruteForceAI.py attack \
   --urls targets.txt \
   --usernames users.txt \
   --passwords passwords.txt \
@@ -217,7 +231,7 @@ python main.py attack \
   --output results.txt
 ```
 
-### 3. With Webhook Notifications
+### 4. With Webhook Notifications
 ```bash
 python main.py attack \
   --urls targets.txt \
@@ -228,7 +242,7 @@ python main.py attack \
   --threads 10
 ```
 
-### 4. Browser Debugging
+### 5. Browser Debugging
 ```bash
 python main.py analyze \
   --urls targets.txt \
@@ -284,6 +298,8 @@ python main.py --skip-version-check analyze --urls targets.txt
 |-----------|-------------|---------|
 | `--mode` | Attack mode (bruteforce/passwordspray) | bruteforce |
 | `--threads` | Number of threads | 1 |
+| `--default-creds` | Use default credentials filtered by detected vendor | False |
+| `--default-creds-file` | Custom default credentials CSV file | bundled CSV |
 | `--delay` | Delay between attempts (seconds) | 0 |
 | `--jitter` | Random jitter (seconds) | 0 |
 | `--success-exit` | Stop after first success | False |

